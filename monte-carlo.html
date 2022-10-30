@@ -84,24 +84,24 @@ button {
 <div>
 	<div class="row-container">
 	<div class="center">
-		Input lower bound \(a\), uppder bound \(b(-10\le a&ltb\le 10)\), and the number of samples \(n(1\le n\le 1000)\) below, then click "Resample":
+		Input lower bound \(a\), upper bound \(b(-10\le a&lt;b\le 10)\), and the number of samples \(n(1\le n\le 1000)\) below, then click "Resample":
 	</div>
 
 	<div id="error_msg" class="error"></div>
 	
 	<div id="lower" class="center">
 	<label>\(a:\)</label>
-	<input id="a_input" type="number">
+	<input id="a_input" type="number" value="-5">
 	</div>
 	
 	<div id="higher" class="center">
 	<label>\(b:\)</label>
-	<input id="b_input" type="number">
+	<input id="b_input" type="number" value="5">
 	</div>
 	
 	<div id="samples" class="center">
 	<label>\(n:\)</label>
-	<input id="N_input" type="number">
+	<input id="N_input" type="number" value="10">
 	</div>
 	
 	<div class="center">
@@ -133,19 +133,21 @@ const MAX_N = 1000;
 const EPS = 0.00001
 
 // graph space settings
-var Width = CANVAS.width;
-var Height = CANVAS.height;
+const Width = CANVAS.width;
+const Height = CANVAS.height;
 const MAX_X = 10;
 const MIN_X = -10;
 const MAX_Y = 10;
 const MIN_Y = -5;
+const PROB_SCALE = 10; //how much to scale probabilities when displaying on the axes
 
 // step size for graphing functions
-var DX = (MAX_X - MIN_X) / Width;
-var DY = (MAX_Y - MIN_Y) / Height;
+const DX = (MAX_X - MIN_X) / Width;
+const DY = (MAX_Y - MIN_Y) / Height;
 
 // graph styling settings
 const F_COLOR = "green";
+const WEIGHTS_COLOR = "#b1b";
 const PDF_COLOR = "red";
 const BOUNDS_COLOR = "blue";
 const LABEL_FONT = "18px Serif";
@@ -155,21 +157,114 @@ const TICK_MARK_OFFSET = 2.5;
 const STEP_X = 1;
 const STEP_Y = 1;
 
-// default lo and hi bounds
-var a = -5;
-var b = 2;
- 
 // CHANGE THIS: default function to graph
-var F = function(x) { 
+const F = function(x) { 
 	return 2 * Math.sin(x) + 3;
 }
 
-// CHANGE THIS: pdf to estimate function F
-var pdf = function(x) {
+// CHANGE THIS: weights for various positions to sample from when estimating function integral over [lo, hi]
+const weights = function(x, lo, hi) {
 	return 2 * Math.sin(x) + 2.6;
 }
 
-window.onload = draw;
+//helper to build a sampler from weightsFn() function over range [lo, hi]:
+class Sampler {
+	constructor(weightsFn, lo, hi) {
+		this.BINS = 100;
+
+		//will actually sample from a piecewise-uniform distribution over 1000 bins:
+		this.lo = lo;
+		this.hi = hi;
+
+		//get weights at bin centers:
+		let total = 0.0;
+		let weights = [];
+		for (let i = 0; i < this.BINS; ++i) {
+			const x = (i + 0.5) / this.BINS * (this.hi - this.lo) + this.lo;
+			const w = Math.max(weightsFn(x), 0);
+			weights.push(w);
+			total += w;
+		}
+		//quantize weights and recompute total to make math a bit easier:
+		const TARGET_TOTAL = 1e9 * this.BINS; //64-bit floating point has about 53 bits of integer precision; this is about 30 bits per bin, so plenty of headroom
+		let subtotal = 0.0;
+		for (let i = 0; i < this.BINS; ++i) {
+			const before = Math.round(TARGET_TOTAL * (subtotal / total));
+			subtotal += weights[i];
+			const after = Math.round(TARGET_TOTAL * (subtotal / total));
+			weights[i] = after - before;
+		}
+
+		//set probabilities to reflect quantized weights:
+		this.probs = [];
+		for (let i = 0; i < weights.length; ++i) {
+			this.probs.push(weights[i] / TARGET_TOTAL);
+		}
+
+		//quick sanity check:
+		total = 0;
+		for (let i = 0; i < this.BINS; ++i) {
+			total += weights[i];
+		}
+		console.assert(total === TARGET_TOTAL, `Weight quantization worked properly (${total} == ${TARGET_TOTAL}).`);
+
+		//Okay, now weights sum to TARGET_TOTAL.
+		//Divide them into uniformly-weighted coin flips with the alias method:
+
+		const AVERAGE = TARGET_TOTAL / this.BINS;
+
+		let over = [];
+		let under = [];
+		for (let i = 0; i < this.BINS; ++i) {
+			let option = {i:i, w:weights[i]};
+			if (option.w < AVERAGE) under.push(option);
+			else over.push(option);
+		}
+
+		//now pair up small and large probabilities into options with exactly AVERAGE weight:
+		this.options = [];
+		while (over.length > 0) {
+			let o = over.pop();
+			if (under.length === 0) {
+				//output an option where both secondary choices are i:
+				this.options.push({a:o.i, b:o.i, split:0.0});
+				o.w -= AVERAGE;
+			} else {
+				let u = under.pop();
+				this.options.push({a:u.i, b:o.i, split:u.w/AVERAGE});
+				o.w -= (AVERAGE - u.w);
+			}
+			console.assert(o.w >= 0, "Shouldn't take more weight than available.");
+			if (o.w >= AVERAGE) over.push(o);
+			else if (o.w > 0) under.push(o);
+		}
+		if (under.length > 0) {
+			console.warn("Hmm, have some leftover probability mass. Strange. Sampling might be a tad odd.");
+			for (let i = 0; i < under.length; ++i) {
+				console.log(`${JSON.stringify(under[i])} vs ${AVERAGE}`);
+			}
+		}
+	}
+	pdf(x) {
+		let i = Math.floor((x - this.lo) / (this.hi - this.lo) * this.BINS);
+		if (i < 0 || i >= this.BINS) return 0.0;
+		const w = (this.hi - this.lo) / this.BINS; //width of a bin
+		return this.probs[i] / w;
+
+	}
+	sample() {
+		window.last_sampler = this; //DEBUG
+		//get option uniformly at random:
+		const oi = Math.floor(Math.random() * this.options.length);
+		const o = this.options[ oi ];
+		//get corresponding bin based on option's split point:
+		const i = (Math.random() < o.split ? o.a : o.b);
+		//sample uniformly within the bin:
+		return (this.hi - this.lo) * ((i + Math.random()) / this.BINS) + this.lo;
+	}
+}
+
+window.onload = update;
 
 // x in graph space -> x in canvas space
 function xToCanvas(x) {
@@ -186,46 +281,42 @@ function yToCanvas(y) {
 
 function numerical(f, n, lo, hi) {
 	// trapezoid rule
-	let dx = (hi - lo) / n;
 	let sum = 0;
-	let xprev = lo;
+	const dx = (hi - lo) / n;
 	for (let i = 0; i < n; i++) {
-		let x0 = xprev;
-		let x1 = x0 + dx;
+		let x0 = (i / n) * (hi - lo) + lo;
+		let x1 = ((i+1) / n) * (hi - lo) + lo;
 		let y0 = f(x0);
 		let y1 = f(x1);
-		sum += ((Math.abs(y0) + Math.abs(y1)) * dx * 0.5)
-		xprev = x1;
+		sum += ((y0 + y1) * dx * 0.5)
 	}
 
 	return sum;
 }
 
-function average(f, n, lo, hi) {
+function average(f, lo, hi, samples) {
 	// no pdf, all samples weighted equally
-	let dx = (hi - lo) / n;
-	let x = lo;
 	let sum = 0;
-	for (let i = 0; i < n; i++) {
-		sum += f(x);
-		x += dx;
+	for (let i = 0; i < samples.length; i++) {
+		let s = samples[i];
+		if (s >= lo && s <= hi) {
+			sum += f(s);
+		}
 	}
-
-	return sum / n;
+	return sum / samples.length;
 }
 
-function pdfAverage(f, n, lo, hi, p) {
+function pdfAverage(f, lo, hi, samples, probs) {
 	// samples weighted by pdf values
-	let dx = (hi - lo) / n;
-	let x = lo;
 	let sum = 0;
-	for (let i = 0; i < n; i++) {
-		let w = (p(x) === 0) ? EPS : p(x);
-		sum += (f(x) / w);
-		x += dx;
+	for (let i = 0; i < samples.length; i++) {
+		let s = samples[i];
+		let p = probs[i];
+		if (s >= lo && s <= hi) {
+			sum += f(s) / p;
+		}
 	}
-
-	return sum / n;
+	return sum / samples.length;
 }
 
 //-----------------------------------------------------------------
@@ -238,7 +329,7 @@ function update() {
 	let hi = parseInt(document.getElementById("b_input").value);
 	let n = parseInt(document.getElementById("N_input").value);
 
-	if (!lo || !hi || !n) {
+	if (!(lo === lo) || !(hi === hi) || !(n === n)) {
 		errorElem.innerHTML = "Please enter all the fields!";
 		return;
 	}
@@ -252,18 +343,30 @@ function update() {
 		errorElem.innerHTML = "Invalid n value!";
 		return;
 	}
+	
+	let sampler = new Sampler(weights, lo, hi);
 
-	a = lo;
-	b = hi;
-	displayMath(n, a, b);
-	draw();
+	displayMath(n, lo, hi, sampler);
+	draw(lo, hi, sampler);
 }
 
-function displayMath(n, a, b) {
+function displayMath(n, lo, hi, sampler) {
+	//sample locations:
+	let samples = [];
+	let probs = [];
+	for (let i = 0; i < n; ++i) {
+		let s = sampler.sample();
+		samples.push(s);
+		probs.push(sampler.pdf(s));
+	}
+	//also, save for later display:
+	sampler.INFO = {samples: samples, probs:probs};
+
+	//compute values:
 	let str = "$$\\begin{aligned}";
-	str += ("\\int_a^b f(x) &=" + `${numerical(F, INTEGRAL_SAMPLES, a, b)}\\\\`);
-	str += ("\\frac{1}{n}\\sum\\limits_{i=1}^n f(s) &=" + `${average(F, n, a, b)}\\\\`);
-	str += ("\\frac{1}{n}\\sum\\limits_{i=1}^n \\frac{f(s)}{pdf(s)} &=" + `${pdfAverage(F, n, a, b, pdf)}`);
+	str += ("\\int_a^b f(x) &=" + `${numerical(F, INTEGRAL_SAMPLES, lo, hi)}\\\\`);
+	str += ("\\frac{1}{n}\\sum\\limits_{i=1}^n f(s) &=" + `${average(F, lo, hi, samples)}\\\\`);
+	str += ("\\frac{1}{n}\\sum\\limits_{i=1}^n \\frac{f(s)}{pdf(s)} &=" + `${pdfAverage(F, lo, hi, samples, probs)}`);
 	str += "\\end{aligned}$$";
 
 	let mathElem = document.getElementById("math");
@@ -272,12 +375,15 @@ function displayMath(n, a, b) {
 	MathJax.typeset([mathElem]);
 }
 
-function draw() {
+function draw(a, b, sampler) {
 	CTX.clearRect(0, 0, Width, Height);
 
 	drawAxes();
 	drawFunction(F, F_COLOR);
-	drawFunction(pdf, PDF_COLOR);
+	drawFunction(weights, WEIGHTS_COLOR);
+	drawSampler(sampler, "yellow");
+	drawFunction((x) => PROB_SCALE * sampler.pdf(x), PDF_COLOR);
+
 	drawBounds(a, b);
 	drawLegend();
 }
@@ -327,6 +433,85 @@ function drawTickMarks() {
 		CTX.stroke();   
 	}
 }
+
+
+function drawSampler(sampler, style) {
+	CTX.save();
+
+	/* //skipping -- already have sampler.pdf() drawn
+	//draw the reported (via 'probs') distribution of the sampler:
+	CTX.beginPath();
+	CTX.moveTo( xToCanvas(sampler.lo) , yToCanvas(0.0) );
+	for (let i = 0; i < sampler.BINS; ++i) {
+		let x0 = xToCanvas( (sampler.hi - sampler.lo) * i / sampler.BINS + sampler.lo );
+		let x1 = xToCanvas( (sampler.hi - sampler.lo) * (i+1) / sampler.BINS + sampler.lo );
+
+		let y = yToCanvas( sampler.probs[i] * PROB_SCALE );
+
+		CTX.lineTo(x0, y);
+		CTX.lineTo(x1, y);
+	}
+	CTX.lineTo( xToCanvas(sampler.hi) , yToCanvas(0.0) );
+	CTX.strokeStyle = '#888';
+	CTX.stroke();
+	CTX.closePath();
+
+	CTX.fillStyle = '#8881';
+	CTX.fill();
+	*/
+
+	//draw an empirical (via a bunch of samples) distribution for the sampler:
+	let counts = [];
+	for (let i = 0; i < 10; ++i) {
+		counts.push(0);
+	}
+
+	const SAMPLES = 10000;
+	let outside = 0;
+	for (let i = 0; i < SAMPLES; ++i) {
+		const b = Math.floor( (sampler.sample(i) - sampler.lo) / (sampler.hi - sampler.lo) * counts.length );
+		if (b >= 0 && b < counts.length) {
+			counts[b] += 1;
+		}
+	}
+
+	CTX.beginPath();
+	CTX.moveTo( xToCanvas(sampler.lo) , yToCanvas(0.0) );
+	for (let i = 0; i < sampler.BINS; ++i) {
+		let x0 = xToCanvas( (sampler.hi - sampler.lo) * i / counts.length + sampler.lo );
+		let x1 = xToCanvas( (sampler.hi - sampler.lo) * (i+1) / counts.length + sampler.lo );
+
+		let dx = (sampler.hi - sampler.lo) / counts.length;
+
+		let y = yToCanvas( counts[i] / SAMPLES / dx * PROB_SCALE );
+
+		CTX.lineTo(x0, y);
+		CTX.lineTo(x1, y);
+	}
+	CTX.lineTo( xToCanvas(sampler.hi) , yToCanvas(0.0) );
+	CTX.strokeStyle = '#880';
+	CTX.stroke();
+	CTX.closePath();
+	CTX.fillStyle = '#ff05';
+	CTX.fill();
+
+	//draw any samples stored in an INFO object:
+	if ('INFO' in sampler) {
+		CTX.beginPath();
+		for (let s of sampler.INFO.samples) {
+			let x = xToCanvas(s);
+			let y0 = yToCanvas(MIN_Y);
+			let y1 = yToCanvas(MAX_Y);
+			CTX.moveTo(x, y0);
+			CTX.lineTo(x, y1);
+		}
+		CTX.strokeStyle = '#8808';
+		CTX.stroke();
+	}
+
+	CTX.restore();
+}
+
 
 function drawFunction(f, style) {
 	CTX.save();
