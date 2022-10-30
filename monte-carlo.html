@@ -122,6 +122,7 @@ button {
 <script>
 "use strict";
 //-----------------------------------------------------------------
+// Helpful global variables
 
 const WRAPPER = document.getElementById('wrapper');
 const CANVAS = document.getElementById('canvas');
@@ -129,21 +130,17 @@ const CTX = CANVAS.getContext('2d');
 
 const INTEGRAL_SAMPLES = 1000;
 const MAX_N = 1000;
-var a = -5;
-var b = 2;
+const EPS = 0.00001
 
 // graph space settings
 var Width = CANVAS.width;
 var Height = CANVAS.height;
 const MAX_X = 10;
 const MIN_X = -10;
-const MAX_Y = MAX_X * Height / Width;
-const MIN_Y = MIN_X * Height / Width;
-const STEP_X = 1;
-const STEP_Y = 1;
-const Y_OFFSET = 0.2;
-const TICK_MARK_OFFSET = 2.5;
+const MAX_Y = 10;
+const MIN_Y = -5;
 
+// step size for graphing functions
 var DX = (MAX_X - MIN_X) / Width;
 var DY = (MAX_Y - MIN_Y) / Height;
 
@@ -153,19 +150,23 @@ const PDF_COLOR = "red";
 const BOUNDS_COLOR = "blue";
 const LABEL_FONT = "18px Serif";
 
-const EPS = 0.00001
+// tick marks settings
+const TICK_MARK_OFFSET = 2.5;
+const STEP_X = 1;
+const STEP_Y = 1;
+
+// default lo and hi bounds
+var a = -5;
+var b = 2;
  
-// default function to graph
+// CHANGE THIS: default function to graph
 var F = function(x) { 
 	return 2 * Math.sin(x) + 3;
-	// return x;
-	// arbitrary function
-	// return (x - 2) * (x - 1) * x * (x + 1) * (x + 2) + 4;
 }
 
-// pdf to estimate function F
+// CHANGE THIS: pdf to estimate function F
 var pdf = function(x) {
-	return 0.5 * x;
+	return 2 * Math.sin(x) + 2.6;
 }
 
 window.onload = draw;
@@ -177,10 +178,11 @@ function xToCanvas(x) {
 
 // y in graph space -> y in canvas space
 function yToCanvas(y) {
-  return (1 - (y - MIN_Y) / (MAX_Y - MIN_Y) + Y_OFFSET) * Height;
+  return (1 - (y - MIN_Y) / (MAX_Y - MIN_Y)) * Height;
 }
 
-/* Integration calculations */
+//-----------------------------------------------------------------
+// Integration and sum calculations
 
 function numerical(f, n, lo, hi) {
 	// trapezoid rule
@@ -226,10 +228,12 @@ function pdfAverage(f, n, lo, hi, p) {
 	return sum / n;
 }
 
-/* Rendering functions */
+//-----------------------------------------------------------------
+// Rendering functions
 
 function update() {
 	let errorElem = document.getElementById("error_msg");
+	errorElem.innerHTML = "";
 	let lo = parseInt(document.getElementById("a_input").value);
 	let hi = parseInt(document.getElementById("b_input").value);
 	let n = parseInt(document.getElementById("N_input").value);
@@ -290,7 +294,7 @@ function drawAxes() {
 	CTX.stroke();
 	CTX.font = LABEL_FONT;
 	CTX.fillStyle = "black";
-	CTX.fillText("x", Width - 10, (0.55 + Y_OFFSET) * Height);
+	CTX.fillText("x", Width - 10, 0.72 * Height);
 
 	// y axis
 	CTX.beginPath();
@@ -308,37 +312,19 @@ function drawAxes() {
 
 function drawTickMarks() {
 	// Y axis tick marks
-	var delta = STEP_Y;
-	for (var i = 1; (i * delta) < MAX_Y; ++i) {
+	for (let yi = MIN_Y; yi <= MAX_Y; yi += STEP_Y) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(0) - TICK_MARK_OFFSET,yToCanvas(i * delta));
-		CTX.lineTo(xToCanvas(0) + TICK_MARK_OFFSET,yToCanvas(i * delta));
+		CTX.moveTo(xToCanvas(0) - TICK_MARK_OFFSET, yToCanvas(yi));
+		CTX.lineTo(xToCanvas(0) + TICK_MARK_OFFSET, yToCanvas(yi));
 		CTX.stroke();  
 	}
-
-	var delta = STEP_Y;
-	for (var i = 1; (i * delta) > MIN_Y; --i) {
-		CTX.beginPath();
-		CTX.moveTo(xToCanvas(0) - TICK_MARK_OFFSET,yToCanvas(i * delta));
-		CTX.lineTo(xToCanvas(0) + TICK_MARK_OFFSET,yToCanvas(i * delta));
-		CTX.stroke();  
-	}  
 	
 	// X tick marks
-	var delta = STEP_X;
-	for (var i = 1; (i * delta) < MAX_X; ++i) {
+	for (let xi = MIN_X; xi <= MAX_X; xi += STEP_X) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(i * delta),yToCanvas(0) - TICK_MARK_OFFSET);
-		CTX.lineTo(xToCanvas(i * delta),yToCanvas(0) + TICK_MARK_OFFSET);
-		CTX.stroke();  
-	}
-
-	var delta = STEP_X;
-	for (var i = 1; (i * delta) > MIN_X; --i) {
-		CTX.beginPath();
-		CTX.moveTo(xToCanvas(i * delta),yToCanvas(0) - TICK_MARK_OFFSET);
-		CTX.lineTo(xToCanvas(i * delta),yToCanvas(0) + TICK_MARK_OFFSET);
-		CTX.stroke();  
+		CTX.moveTo(xToCanvas(xi), yToCanvas(0) - TICK_MARK_OFFSET);
+		CTX.lineTo(xToCanvas(xi), yToCanvas(0) + TICK_MARK_OFFSET);
+		CTX.stroke();   
 	}
 }
 
@@ -378,6 +364,7 @@ function drawBounds(lo, hi) {
 	CTX.restore();
 }
 
+// TODO: change this very bad hard-coding
 function drawLegend() {
 	let w = 0.3 * Width;
 	let h = 0.1 * Height;
