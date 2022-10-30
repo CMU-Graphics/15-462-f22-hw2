@@ -33,9 +33,34 @@ p {
 .column-container {
 	display: grid;
     grid-template-columns: auto auto;
-    /* gap: 10px 50px; */
     background-color: white;
 	padding: 0 10% 0 10%;
+}
+
+.row-container {
+	display: grid;
+	grid-template-rows: auto;
+	background-color: white;
+	padding: auto 0 auto 0;
+	gap: 20px 0;
+}
+
+.center {
+	margin: auto;
+}
+
+.error {
+	margin: auto;
+	color: red;
+}
+
+button {
+    font-size: large;
+	border: none;
+	color: white;
+    background-color: #b00;;
+    width: 6em;
+    height: 2em;
 }
 
 </style>
@@ -54,41 +79,42 @@ p {
 </p>
 
 <div id="wrapper" class="column-container">
-<canvas id="canvas" width="500px" height="300px"></canvas>
+<canvas id="canvas" width="600px" height="350px"></canvas>
 
 <div>
-	<div>
-	<label>a:</label>
+	<div class="row-container">
+	<div class="center">
+		Input lower bound \(a\), uppder bound \(b(-10\le a&ltb\le 10)\), and the number of samples \(n(1\le n\le 1000)\) below, then click "Resample":
+	</div>
+
+	<div id="error_msg" class="error"></div>
+	
+	<div id="lower" class="center">
+	<label>\(a:\)</label>
 	<input id="a_input" type="number">
 	</div>
 	
-	<div>
-	<label>b:</label>
+	<div id="higher" class="center">
+	<label>\(b:\)</label>
 	<input id="b_input" type="number">
 	</div>
 	
-	<div>
-	<label>N:</label>
+	<div id="samples" class="center">
+	<label>\(n:\)</label>
 	<input id="N_input" type="number">
 	</div>
 	
-	<div>
+	<div class="center">
 	<button id="resample_button" onclick="update()">Resample</button>
 	</div>
-	
-	<div id="num_int_value">
-		<!-- Numerical Integration: -->
-		$$\int_a^b f(x) =$$ 
+
+	<div id="math" class="center">
+		$$\begin{aligned}
+			\int_a^b f(x) &= \\ 
+			\frac{1}{n}\sum\limits_{i=1}^n f(s) &= \\ 
+			\frac{1}{n}\sum\limits_{i=1}^n \frac{f(s)}{pdf(s)} &= 
+		\end{aligned}$$
 	</div>
-		
-	<div id="avg_value">
-		<!-- Function Average without divison by pdf: -->
-		$$\frac{1}{n}\sum\limits_{i=1}^n f(s) =$$
-	</div>
-	
-	<div id="pdf_avg_value">
-		<!-- Function Average with division by pdf: -->
-		$$\frac{1}{n}\sum\limits_{i=1}^n \frac{f(s)}{pdf(s)} =$$
 	</div>
 </div>
 </div>
@@ -101,31 +127,38 @@ const WRAPPER = document.getElementById('wrapper');
 const CANVAS = document.getElementById('canvas');
 const CTX = CANVAS.getContext('2d');
 
-var Width = CANVAS.width;
-var Height = CANVAS.height;
+const INTEGRAL_SAMPLES = 1000;
+const MAX_N = 1000;
 var a = -5;
 var b = 2;
 
 // graph space settings
+var Width = CANVAS.width;
+var Height = CANVAS.height;
 const MAX_X = 10;
 const MIN_X = -10;
 const MAX_Y = MAX_X * Height / Width;
 const MIN_Y = MIN_X * Height / Width;
 const STEP_X = 1;
 const STEP_Y = 1;
+const Y_OFFSET = 0.2;
+const TICK_MARK_OFFSET = 2.5;
 
 var DX = (MAX_X - MIN_X) / Width;
 var DY = (MAX_Y - MIN_Y) / Height;
 
+// graph styling settings
 const F_COLOR = "green";
 const PDF_COLOR = "red";
+const BOUNDS_COLOR = "blue";
+const LABEL_FONT = "18px Serif";
 
 const EPS = 0.00001
  
 // default function to graph
 var F = function(x) { 
-	// return Math.sin(x) + 1;
-	return x;
+	return 2 * Math.sin(x) + 3;
+	// return x;
 	// arbitrary function
 	// return (x - 2) * (x - 1) * x * (x + 1) * (x + 2) + 4;
 }
@@ -144,7 +177,7 @@ function xToCanvas(x) {
 
 // y in graph space -> y in canvas space
 function yToCanvas(y) {
-  return Height - (y - MIN_Y) / (MAX_Y - MIN_Y) * Height;
+  return (1 - (y - MIN_Y) / (MAX_Y - MIN_Y) + Y_OFFSET) * Height;
 }
 
 /* Integration calculations */
@@ -196,29 +229,43 @@ function pdfAverage(f, n, lo, hi, p) {
 /* Rendering functions */
 
 function update() {
-	a = parseInt(document.getElementById("a_input").value);
-	b = parseInt(document.getElementById("b_input").value);
-	if (a >= b) {
-		// TODO: display an error message on screen
-		console.log("bad bounds");
+	let errorElem = document.getElementById("error_msg");
+	let lo = parseInt(document.getElementById("a_input").value);
+	let hi = parseInt(document.getElementById("b_input").value);
+	let n = parseInt(document.getElementById("N_input").value);
+
+	if (!lo || !hi || !n) {
+		errorElem.innerHTML = "Please enter all the fields!";
+		return;
+	}
+	
+	if (lo < MIN_X || hi > MAX_X || lo >= hi) {
+		errorElem.innerHTML = "Invalid a and b values!";
+		return;
 	}
 
-	let n = parseInt(document.getElementById("N_input").value);
-	// TODO: set a threshold for n
-	
-	let numSumElem = document.getElementById("num_int_value");
-	numSumElem.innerHTML = "$$\\int_a^b f(x) =" + `${numerical(F, n, a, b)}$$`;
+	if (n <= 0 || n > MAX_N) {
+		errorElem.innerHTML = "Invalid n value!";
+		return;
+	}
 
-	let avgElem = document.getElementById("avg_value");
-	avgElem.innerHTML = "$$\\frac{1}{n}\\sum\\limits_{i=1}^n f(s) =" + `${average(F, n, a, b)}$$`;
-
-	let pdfAvgElem = document.getElementById("pdf_avg_value");
-	pdfAvgElem.innerHTML = "$$\\frac{1}{n}\\sum\\limits_{i=1}^n \\frac{f(s)}{pdf(s)} =" + `${pdfAverage(F, n, a, b, pdf)}$$`;
-
-	MathJax.typesetClear([numSumElem, avgElem, pdfAvgElem]);
-	MathJax.typeset([numSumElem, avgElem, pdfAvgElem]);
-
+	a = lo;
+	b = hi;
+	displayMath(n, a, b);
 	draw();
+}
+
+function displayMath(n, a, b) {
+	let str = "$$\\begin{aligned}";
+	str += ("\\int_a^b f(x) &=" + `${numerical(F, INTEGRAL_SAMPLES, a, b)}\\\\`);
+	str += ("\\frac{1}{n}\\sum\\limits_{i=1}^n f(s) &=" + `${average(F, n, a, b)}\\\\`);
+	str += ("\\frac{1}{n}\\sum\\limits_{i=1}^n \\frac{f(s)}{pdf(s)} &=" + `${pdfAverage(F, n, a, b, pdf)}`);
+	str += "\\end{aligned}$$";
+
+	let mathElem = document.getElementById("math");
+	mathElem.innerHTML = str;
+	MathJax.typesetClear([mathElem]);
+	MathJax.typeset([mathElem]);
 }
 
 function draw() {
@@ -228,24 +275,33 @@ function draw() {
 	drawFunction(F, F_COLOR);
 	drawFunction(pdf, PDF_COLOR);
 	drawBounds(a, b);
+	drawLegend();
 }
 
 // draws the X ad Y axes with tick marks
 function drawAxes() {
 	CTX.save();
 	CTX.lineWidth = 2;
-
+	
+	// x axis
 	CTX.beginPath();
-	CTX.moveTo(xToCanvas(0),yToCanvas(MIN_Y));
-	CTX.lineTo(xToCanvas(0),yToCanvas(MAX_Y));
+	CTX.moveTo(0, yToCanvas(0));
+	CTX.lineTo(Width, yToCanvas(0));
 	CTX.stroke();
+	CTX.font = LABEL_FONT;
+	CTX.fillStyle = "black";
+	CTX.fillText("x", Width - 10, (0.55 + Y_OFFSET) * Height);
 
+	// y axis
 	CTX.beginPath();
-	CTX.moveTo(xToCanvas(MIN_X),yToCanvas(0));
-	CTX.lineTo(xToCanvas(MAX_X),yToCanvas(0));
+	CTX.moveTo(xToCanvas(0), 0);
+	CTX.lineTo(xToCanvas(0), Height);
 	CTX.stroke();
+	CTX.font = LABEL_FONT;
+	CTX.fillStyle = "black";
+	CTX.fillText("y", 0.5 * Width + 10, 15);
 
-	// drawTickMarks();
+	drawTickMarks();
 
 	CTX.restore();
 }
@@ -255,16 +311,16 @@ function drawTickMarks() {
 	var delta = STEP_Y;
 	for (var i = 1; (i * delta) < MAX_Y; ++i) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(0) - 5,yToCanvas(i * delta));
-		CTX.lineTo(xToCanvas(0) + 5,yToCanvas(i * delta));
+		CTX.moveTo(xToCanvas(0) - TICK_MARK_OFFSET,yToCanvas(i * delta));
+		CTX.lineTo(xToCanvas(0) + TICK_MARK_OFFSET,yToCanvas(i * delta));
 		CTX.stroke();  
 	}
 
 	var delta = STEP_Y;
 	for (var i = 1; (i * delta) > MIN_Y; --i) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(0) - 5,yToCanvas(i * delta));
-		CTX.lineTo(xToCanvas(0) + 5,yToCanvas(i * delta));
+		CTX.moveTo(xToCanvas(0) - TICK_MARK_OFFSET,yToCanvas(i * delta));
+		CTX.lineTo(xToCanvas(0) + TICK_MARK_OFFSET,yToCanvas(i * delta));
 		CTX.stroke();  
 	}  
 	
@@ -272,16 +328,16 @@ function drawTickMarks() {
 	var delta = STEP_X;
 	for (var i = 1; (i * delta) < MAX_X; ++i) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(i * delta),yToCanvas(0)-5);
-		CTX.lineTo(xToCanvas(i * delta),yToCanvas(0)+5);
+		CTX.moveTo(xToCanvas(i * delta),yToCanvas(0) - TICK_MARK_OFFSET);
+		CTX.lineTo(xToCanvas(i * delta),yToCanvas(0) + TICK_MARK_OFFSET);
 		CTX.stroke();  
 	}
 
 	var delta = STEP_X;
 	for (var i = 1; (i * delta) > MIN_X; --i) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(i * delta),yToCanvas(0)-5);
-		CTX.lineTo(xToCanvas(i * delta),yToCanvas(0)+5);
+		CTX.moveTo(xToCanvas(i * delta),yToCanvas(0) - TICK_MARK_OFFSET);
+		CTX.lineTo(xToCanvas(i * delta),yToCanvas(0) + TICK_MARK_OFFSET);
 		CTX.stroke();  
 	}
 }
@@ -303,15 +359,56 @@ function drawFunction(f, style) {
 function drawBounds(lo, hi) {
 	CTX.save();
 
+	CTX.strokeStyle = BOUNDS_COLOR;
+	CTX.fillStyle = BOUNDS_COLOR;
+	CTX.font = LABEL_FONT;
+
 	CTX.beginPath();
-	CTX.moveTo(xToCanvas(lo), yToCanvas(MIN_Y));
-	CTX.lineTo(xToCanvas(lo), yToCanvas(MAX_Y));
+	CTX.moveTo(xToCanvas(lo), 0);
+	CTX.lineTo(xToCanvas(lo), Height);
+	CTX.stroke();
+	CTX.fillText(`a = ${lo}`, xToCanvas(lo) + 5, 15);
+
+	CTX.beginPath();
+	CTX.moveTo(xToCanvas(hi), 0);
+	CTX.lineTo(xToCanvas(hi), Height);
+	CTX.stroke();
+	CTX.fillText(`b = ${hi}`, xToCanvas(hi) + 5, 15);
+
+	CTX.restore();
+}
+
+function drawLegend() {
+	let w = 0.3 * Width;
+	let h = 0.1 * Height;
+	let cx = 0.5 * (Width - w);
+	let cy = Height - h;
+
+	CTX.save();
+
+	CTX.beginPath();
+	CTX.rect(cx, cy, w, h);
+	CTX.fillStyle = "white";
+	CTX.fill()
 	CTX.stroke();
 
 	CTX.beginPath();
-	CTX.moveTo(xToCanvas(hi), yToCanvas(MIN_Y));
-	CTX.lineTo(xToCanvas(hi), yToCanvas(MAX_Y));
+	CTX.strokeStyle = F_COLOR;
+	CTX.moveTo(cx + 0.5 * w - 60 , cy + 0.5 * h);
+	CTX.lineTo(cx + 0.5 * w - 40, cy + 0.5 * h);
 	CTX.stroke();
+	CTX.font = LABEL_FONT;
+	CTX.fillStyle = "black";
+	CTX.fillText("f", cx + 0.5 * w - 30, cy + 0.7 * h);
+
+	CTX.beginPath();
+	CTX.strokeStyle = PDF_COLOR;
+	CTX.moveTo(cx + 0.5 * w + 10, cy + 0.5 * h);
+	CTX.lineTo(cx + 0.5 * w + 30, cy + 0.5 * h);
+	CTX.stroke();
+	CTX.font = LABEL_FONT;
+	CTX.fillStyle = "black";
+	CTX.fillText("pdf", cx + 0.5 * w + 40, cy + 0.7 * h);
 
 	CTX.restore();
 }
