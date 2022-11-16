@@ -147,6 +147,11 @@ const WEIGHTS_COLOR = "#b1b";
 const PDF_COLOR = "red";
 const BOUNDS_COLOR = "blue";
 const LABEL_FONT = "18px Serif";
+const COLOR_YELLOW = [255, 255, 0];
+const COLOR_ORANGE = [255, 165, 0];
+const COLOR_GREEN = [0, 255, 0];
+const COLOR_BLUE = [0, 0, 255];
+
 
 // tick marks settings
 const TICK_MARK_OFFSET = 2.5;
@@ -168,12 +173,15 @@ const weights = function(x, lo, hi) {
 
 //helper to build a sampler from weightsFn() function over range [lo, hi]:
 class Sampler {
-	constructor(weightsFn, lo, hi) {
+	constructor(weightsFn, lo, hi, fillRGB) {
 		this.BINS = 100;
 
 		//will actually sample from a piecewise-uniform distribution over 1000 bins:
 		this.lo = lo;
 		this.hi = hi;
+
+		//for plotting
+		this.fillRGB = fillRGB;
 
 		//get weights at bin centers:
 		let total = 0.0;
@@ -325,6 +333,7 @@ function init() {
 	update()
 }
 
+
 function update() {
 	let errorElem = document.getElementById("error_msg");
 	errorElem.innerHTML = "";
@@ -347,12 +356,16 @@ function update() {
 		return;
 	}
 	
-	let sampler = new Sampler(weights, lo, hi);
+	let sampler = new Sampler(weights, lo, hi, COLOR_GREEN);
 
 	displayMath(n, lo, hi, sampler);
-	TopCanvas.draw(lo, hi, sampler);
+	TopCanvas.draw(lo, hi, [sampler]);
 
-	BottomCanvas.draw(lo, hi, sampler);
+	const weights_1 = function(x, lo ,hi) { return 2 * Math.cos(x) + 2.6 }
+	const weights_2 = function(x, lo, hi) { return x }
+	const sampler_1 = new Sampler(weights_1, lo, hi, COLOR_YELLOW);
+	const sampler_2 = new Sampler(weights_2, lo, hi, COLOR_BLUE);
+	BottomCanvas.draw(lo, hi, [sampler, sampler_1, sampler_2]);
 }
 
 function displayMath(n, lo, hi, sampler) {
@@ -392,14 +405,17 @@ class DistributionRenderer {
 		this.DY = (MAX_Y - MIN_Y) / this.Height;
 	}
 
-	draw(a, b, sampler) {  
+	draw(a, b, samplers) {  
 		this.CTX.clearRect(0, 0, this.Width, this.Height);
 		drawAxes(this.CTX, this.Width, this.Height);
-
 		drawFunction(this.CTX, F, F_COLOR, this.Width, this.Height, this.DX, this.DY);
 		drawFunction(this.CTX, weights, WEIGHTS_COLOR, this.Width, this.Height, this.DX, this.DY);
-		drawSampler(this.CTX, sampler, "yellow", this.Width, this.Height);
-		drawFunction(this.CTX, (x) => PROB_SCALE * sampler.pdf(x), PDF_COLOR, this.Width, this.Height, this.DX, this.DY);
+		
+		for (let i = 0; i < samplers.length; i ++) {  
+			drawSampler(this.CTX, samplers[i], this.Width, this.Height);
+			drawFunction(this.CTX, (x) => PROB_SCALE * samplers[i].pdf(x), PDF_COLOR, this.Width, this.Height, this.DX, this.DY);
+		}
+		
 		drawBounds(this.CTX, a, b, this.Width, this.Height);
 		drawLegend(this.CTX, this.Width, this.Height);
 	}
@@ -461,7 +477,7 @@ function drawAxes(CTX, Width, Height) {
 	CTX.restore();
 }
 
-function drawSampler(CTX, sampler, style, Width, Height) {
+function drawSampler(CTX, sampler, Width, Height) {
 	CTX.save();
 
 	/* //skipping -- already have sampler.pdf() drawn
@@ -518,7 +534,9 @@ function drawSampler(CTX, sampler, style, Width, Height) {
 	CTX.strokeStyle = '#880';
 	CTX.stroke();
 	CTX.closePath();
-	CTX.fillStyle = '#ff05';
+	console.log(sampler.fillRGB)
+	var [r, g, b] = sampler.fillRGB // color of area under the curve
+	CTX.fillStyle = `rgba(${r}, ${g}, ${b}, 0.5)`;
 	CTX.fill();
 
 	//draw any samples stored in an INFO object:
