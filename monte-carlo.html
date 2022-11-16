@@ -79,7 +79,7 @@ button {
 </p>
 
 <div id="wrapper" class="column-container">
-<canvas id="canvas" width="600px" height="350px"></canvas>
+<canvas id="canvas-top" width="600px" height="350px"></canvas>
 
 <div>
 	<div class="row-container">
@@ -116,7 +116,10 @@ button {
 		\end{aligned}$$
 	</div>
 	</div>
+
 </div>
+
+<canvas id="canvas-bot" width="1000px" height="350px"></canvas>
 </div>
 
 <script>
@@ -124,17 +127,17 @@ button {
 //-----------------------------------------------------------------
 // Helpful global variables
 
-const WRAPPER = document.getElementById('wrapper');
-const CANVAS = document.getElementById('canvas');
-const CTX = CANVAS.getContext('2d');
+const TOP_CANVAS = document.getElementById('canvas-top');
+console.log(TOP_CANVAS);
+// const CTX = CANVAS.getContext('2d');
 
 const INTEGRAL_SAMPLES = 1000;
 const MAX_N = 1000;
 const EPS = 0.00001
 
 // graph space settings
-const Width = CANVAS.width;
-const Height = CANVAS.height;
+// const Width = CANVAS.width;
+// const Height = CANVAS.height;
 const MAX_X = 10;
 const MIN_X = -10;
 const MAX_Y = 10;
@@ -142,8 +145,8 @@ const MIN_Y = -5;
 const PROB_SCALE = 10; //how much to scale probabilities when displaying on the axes
 
 // step size for graphing functions
-const DX = (MAX_X - MIN_X) / Width;
-const DY = (MAX_Y - MIN_Y) / Height;
+// const DX = (MAX_X - MIN_X) / Width;
+// const DY = (MAX_Y - MIN_Y) / Height;
 
 // graph styling settings
 const F_COLOR = "green";
@@ -156,6 +159,8 @@ const LABEL_FONT = "18px Serif";
 const TICK_MARK_OFFSET = 2.5;
 const STEP_X = 1;
 const STEP_Y = 1;
+
+var TopCanvas;
 
 // CHANGE THIS: default function to graph
 const F = function(x) { 
@@ -264,15 +269,14 @@ class Sampler {
 	}
 }
 
-window.onload = update;
 
 // x in graph space -> x in canvas space
-function xToCanvas(x) {
+function xToCanvas(x, Width) {
   return (x - MIN_X) / (MAX_X - MIN_X) * Width;
 }
 
 // y in graph space -> y in canvas space
-function yToCanvas(y) {
+function yToCanvas(y, Height) {
   return (1 - (y - MIN_Y) / (MAX_Y - MIN_Y)) * Height;
 }
 
@@ -347,7 +351,7 @@ function update() {
 	let sampler = new Sampler(weights, lo, hi);
 
 	displayMath(n, lo, hi, sampler);
-	draw(lo, hi, sampler);
+	TopCanvas.draw(lo, hi, sampler);
 }
 
 function displayMath(n, lo, hi, sampler) {
@@ -375,6 +379,30 @@ function displayMath(n, lo, hi, sampler) {
 	MathJax.typeset([mathElem]);
 }
 
+
+class CanvasRenderer {  
+	constructor(HTMLCanvas) {  
+		this.CANVAS = HTMLCanvas;
+		this.CTX = HTMLCanvas.getContext("2d");
+		this.Width = HTMLCanvas.width;
+		this.Height = HTMLCanvas.height;
+		this.DX = (MAX_X - MIN_X) / this.Width;
+		this.DY = (MAX_Y - MIN_Y) / this.Height;
+	}
+
+	draw(a, b, sampler) {  
+		this.CTX.clearRect(0, 0, this.Width, this.Height);
+		drawAxes(this.CTX, this.Width, this.Height);
+
+		drawFunction(this.CTX, F, F_COLOR, this.Width, this.Height, this.DX, this.DY);
+		drawFunction(this.CTX, weights, WEIGHTS_COLOR, this.Width, this.Height, this.DX, this.DY);
+		drawSampler(this.CTX, sampler, "yellow", this.Width, this.Height);
+		drawFunction(this.CTX, (x) => PROB_SCALE * sampler.pdf(x), PDF_COLOR, this.Width, this.Height, this.DX, this.DY);
+		drawBounds(this.CTX, a, b, this.Width, this.Height);
+		drawLegend(this.CTX, this.Width, this.Height);
+	}
+}
+
 function draw(a, b, sampler) {
 	CTX.clearRect(0, 0, Width, Height);
 
@@ -389,14 +417,15 @@ function draw(a, b, sampler) {
 }
 
 // draws the X ad Y axes with tick marks
-function drawAxes() {
+function drawAxes(CTX, Width, Height) {
+	console.log("Input: ", CTX, Width, Height)
 	CTX.save();
 	CTX.lineWidth = 2;
 	
 	// x axis
 	CTX.beginPath();
-	CTX.moveTo(0, yToCanvas(0));
-	CTX.lineTo(Width, yToCanvas(0));
+	CTX.moveTo(0, yToCanvas(0, Height)); 
+	CTX.lineTo(Width, yToCanvas(0, Height));
 	CTX.stroke();
 	CTX.font = LABEL_FONT;
 	CTX.fillStyle = "black";
@@ -404,38 +433,33 @@ function drawAxes() {
 
 	// y axis
 	CTX.beginPath();
-	CTX.moveTo(xToCanvas(0), 0);
-	CTX.lineTo(xToCanvas(0), Height);
+	CTX.moveTo(xToCanvas(0, Width), 0);
+	CTX.lineTo(xToCanvas(0, Width), Height);
 	CTX.stroke();
 	CTX.font = LABEL_FONT;
 	CTX.fillStyle = "black";
 	CTX.fillText("y", 0.5 * Width + 10, 15);
 
-	drawTickMarks();
-
-	CTX.restore();
-}
-
-function drawTickMarks() {
 	// Y axis tick marks
 	for (let yi = MIN_Y; yi <= MAX_Y; yi += STEP_Y) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(0) - TICK_MARK_OFFSET, yToCanvas(yi));
-		CTX.lineTo(xToCanvas(0) + TICK_MARK_OFFSET, yToCanvas(yi));
+		CTX.moveTo(xToCanvas(0, Width) - TICK_MARK_OFFSET, yToCanvas(yi, Height));
+		CTX.lineTo(xToCanvas(0, Width) + TICK_MARK_OFFSET, yToCanvas(yi, Height));
 		CTX.stroke();  
 	}
 	
 	// X tick marks
 	for (let xi = MIN_X; xi <= MAX_X; xi += STEP_X) {
 		CTX.beginPath();
-		CTX.moveTo(xToCanvas(xi), yToCanvas(0) - TICK_MARK_OFFSET);
-		CTX.lineTo(xToCanvas(xi), yToCanvas(0) + TICK_MARK_OFFSET);
+		CTX.moveTo(xToCanvas(xi, Width), yToCanvas(0, Height) - TICK_MARK_OFFSET);
+		CTX.lineTo(xToCanvas(xi, Width), yToCanvas(0, Height) + TICK_MARK_OFFSET);
 		CTX.stroke();   
 	}
+	
+	CTX.restore();
 }
 
-
-function drawSampler(sampler, style) {
+function drawSampler(CTX, sampler, style, Width, Height) {
 	CTX.save();
 
 	/* //skipping -- already have sampler.pdf() drawn
@@ -476,19 +500,19 @@ function drawSampler(sampler, style) {
 	}
 
 	CTX.beginPath();
-	CTX.moveTo( xToCanvas(sampler.lo) , yToCanvas(0.0) );
+	CTX.moveTo( xToCanvas(sampler.lo, Width) , yToCanvas(0.0, Height) );
 	for (let i = 0; i < sampler.BINS; ++i) {
-		let x0 = xToCanvas( (sampler.hi - sampler.lo) * i / counts.length + sampler.lo );
-		let x1 = xToCanvas( (sampler.hi - sampler.lo) * (i+1) / counts.length + sampler.lo );
+		let x0 = xToCanvas( (sampler.hi - sampler.lo) * i / counts.length + sampler.lo, Width );
+		let x1 = xToCanvas( (sampler.hi - sampler.lo) * (i+1) / counts.length + sampler.lo, Width );
 
 		let dx = (sampler.hi - sampler.lo) / counts.length;
 
-		let y = yToCanvas( counts[i] / SAMPLES / dx * PROB_SCALE );
+		let y = yToCanvas( counts[i] / SAMPLES / dx * PROB_SCALE , Height);
 
 		CTX.lineTo(x0, y);
 		CTX.lineTo(x1, y);
 	}
-	CTX.lineTo( xToCanvas(sampler.hi) , yToCanvas(0.0) );
+	CTX.lineTo( xToCanvas(sampler.hi, Width) , yToCanvas(0.0, Height) );
 	CTX.strokeStyle = '#880';
 	CTX.stroke();
 	CTX.closePath();
@@ -499,9 +523,9 @@ function drawSampler(sampler, style) {
 	if ('INFO' in sampler) {
 		CTX.beginPath();
 		for (let s of sampler.INFO.samples) {
-			let x = xToCanvas(s);
-			let y0 = yToCanvas(MIN_Y);
-			let y1 = yToCanvas(MAX_Y);
+			let x = xToCanvas(s, Width);
+			let y0 = yToCanvas(MIN_Y, Height);
+			let y1 = yToCanvas(MAX_Y, Height);
 			CTX.moveTo(x, y0);
 			CTX.lineTo(x, y1);
 		}
@@ -513,21 +537,21 @@ function drawSampler(sampler, style) {
 }
 
 
-function drawFunction(f, style) {
+function drawFunction(CTX, f, style, Width, Height, DX, DY) {
 	CTX.save();
 
 	CTX.beginPath();
 	CTX.strokeStyle = style;
-	CTX.moveTo(xToCanvas(MIN_X), yToCanvas(f(MIN_X)));
+	CTX.moveTo(xToCanvas(MIN_X, Width), yToCanvas(f(MIN_X), Height));
 	for (let x = MIN_X + DX; x <= MAX_X; x += DX) {
-		CTX.lineTo(xToCanvas(x), yToCanvas(f(x)));
+		CTX.lineTo(xToCanvas(x, Width), yToCanvas(f(x), Height));
 	}
 	CTX.stroke();
 
 	CTX.restore();
 }
 
-function drawBounds(lo, hi) {
+function drawBounds(CTX, lo, hi, Width, Height) {
 	CTX.save();
 
 	CTX.strokeStyle = BOUNDS_COLOR;
@@ -535,22 +559,22 @@ function drawBounds(lo, hi) {
 	CTX.font = LABEL_FONT;
 
 	CTX.beginPath();
-	CTX.moveTo(xToCanvas(lo), 0);
-	CTX.lineTo(xToCanvas(lo), Height);
+	CTX.moveTo(xToCanvas(lo, Width), 0);
+	CTX.lineTo(xToCanvas(lo, Width), Height);
 	CTX.stroke();
-	CTX.fillText(`a = ${lo}`, xToCanvas(lo) + 5, 15);
+	CTX.fillText(`a = ${lo}`, xToCanvas(lo, Width) + 5, 15);
 
 	CTX.beginPath();
-	CTX.moveTo(xToCanvas(hi), 0);
-	CTX.lineTo(xToCanvas(hi), Height);
+	CTX.moveTo(xToCanvas(hi, Width), 0);
+	CTX.lineTo(xToCanvas(hi, Width), Height);
 	CTX.stroke();
-	CTX.fillText(`b = ${hi}`, xToCanvas(hi) + 5, 15);
+	CTX.fillText(`b = ${hi}`, xToCanvas(hi, Width) + 5, 15);
 
 	CTX.restore();
 }
 
 // TODO: change this very bad hard-coding
-function drawLegend() {
+function drawLegend(CTX, Width, Height) {
 	let w = 0.3 * Width;
 	let h = 0.1 * Height;
 	let cx = 0.5 * (Width - w);
@@ -584,6 +608,11 @@ function drawLegend() {
 
 	CTX.restore();
 }
+
+
+TopCanvas = new CanvasRenderer(TOP_CANVAS)
+window.onload = update;
+
 
 </script>
 </body>
