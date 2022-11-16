@@ -128,25 +128,18 @@ button {
 // Helpful global variables
 
 const TOP_CANVAS = document.getElementById('canvas-top');
-console.log(TOP_CANVAS);
-// const CTX = CANVAS.getContext('2d');
+const BOT_CANVAS = document.getElementById('canvas-bot');
 
 const INTEGRAL_SAMPLES = 1000;
 const MAX_N = 1000;
 const EPS = 0.00001
 
 // graph space settings
-// const Width = CANVAS.width;
-// const Height = CANVAS.height;
 const MAX_X = 10;
 const MIN_X = -10;
 const MAX_Y = 10;
 const MIN_Y = -5;
 const PROB_SCALE = 10; //how much to scale probabilities when displaying on the axes
-
-// step size for graphing functions
-// const DX = (MAX_X - MIN_X) / Width;
-// const DY = (MAX_Y - MIN_Y) / Height;
 
 // graph styling settings
 const F_COLOR = "green";
@@ -161,6 +154,7 @@ const STEP_X = 1;
 const STEP_Y = 1;
 
 var TopCanvas;
+var BottomCanvas;
 
 // CHANGE THIS: default function to graph
 const F = function(x) { 
@@ -325,6 +319,11 @@ function pdfAverage(f, lo, hi, samples, probs) {
 
 //-----------------------------------------------------------------
 // Rendering functions
+function init() {  
+	TopCanvas = new DistributionRenderer(TOP_CANVAS)
+	BottomCanvas = new DistributionRenderer(BOT_CANVAS)
+	update()
+}
 
 function update() {
 	let errorElem = document.getElementById("error_msg");
@@ -352,6 +351,8 @@ function update() {
 
 	displayMath(n, lo, hi, sampler);
 	TopCanvas.draw(lo, hi, sampler);
+
+	BottomCanvas.draw(lo, hi, sampler);
 }
 
 function displayMath(n, lo, hi, sampler) {
@@ -380,12 +381,13 @@ function displayMath(n, lo, hi, sampler) {
 }
 
 
-class CanvasRenderer {  
+class DistributionRenderer {  
 	constructor(HTMLCanvas) {  
 		this.CANVAS = HTMLCanvas;
 		this.CTX = HTMLCanvas.getContext("2d");
 		this.Width = HTMLCanvas.width;
 		this.Height = HTMLCanvas.height;
+		// step size for graphing functions
 		this.DX = (MAX_X - MIN_X) / this.Width;
 		this.DY = (MAX_Y - MIN_Y) / this.Height;
 	}
@@ -536,7 +538,6 @@ function drawSampler(CTX, sampler, style, Width, Height) {
 	CTX.restore();
 }
 
-
 function drawFunction(CTX, f, style, Width, Height, DX, DY) {
 	CTX.save();
 
@@ -610,8 +611,7 @@ function drawLegend(CTX, Width, Height) {
 }
 
 
-TopCanvas = new CanvasRenderer(TOP_CANVAS)
-window.onload = update;
+window.onload = init;
 
 
 </script>
