@@ -15,16 +15,17 @@ body {
 	padding:0 2em 0 2em;
 }
 
-h1, h2 {
+h1, h2, h3 {
 	font-size: 24pt;
 	font-weight: 700;
 	margin:0 auto 14px auto;
 }
 h1 { text-transform: uppercase; margin-bottom: 5px; }
 h2 { font-size: 16pt; }
+h3 { font-size: 12pt; font-weight:bold; }
 
-p, h1, h2 { max-width: 700px; }
-p { 
+p, ol, h1, h2, h3 { max-width: 700px; }
+p, ol { 
 	color: #505050;
 	margin:0 auto 1em auto;
 }
@@ -32,8 +33,8 @@ p {
 .highlight { color: #b00; }
 .column-container {
 	display: grid;
-    grid-template-columns: auto auto;
-    background-color: white;
+	grid-template-columns: auto auto;
+	background-color: white;
 	padding: 0 10% 0 10%;
 }
 
@@ -55,12 +56,20 @@ p {
 }
 
 button {
-    font-size: large;
+	font-size: large;
 	border: none;
 	color: white;
-    background-color: #b00;;
-    width: 6em;
-    height: 2em;
+	background-color: #b00;;
+	width: 6em;
+	height: 2em;
+}
+
+code {
+	background:#eee;
+	padding:2px 4px;
+	border-radius:4px;
+	font-size:12px;
+	font-weight:bold;
 }
 
 </style>
@@ -75,11 +84,25 @@ button {
 <h2>CMU 15-462/662 Fall 2022 | <span class="highlight">Mini-HW</span></h2>
 
 <p>
-(Assignment description)
+This is less of an assignment and more of a playground. <b>Particularly: you don't need to turn in anything.</b> Below you will find a function being integrated using a direct numerical method (trapezoid rule) and a stochastic method (Monte Carlo integration).
 </p>
+<p>
+The main graph shows the function (\(f\)), the probability distribution function from which samples are being drawn (\(p\) -- scaled by a factor of 10 for readability), the integration bounds (light blue lines), and the samples used in the last Monte Carlo integration (yellow lines).
+</p>
+<p>
+The auxiliary graph below that shows the relative error in the integral vs number of samples (from 1 to <code>MAX_SAMPLES</code> -- by default, 1000); error is shown both for the trapezoid rule and for a several runs of Monte Carlo integration.
+</p>
+<h3>Things to try:</h3>
+<ol>
+<li>Notice that summing the samples without dividing by the PDF <em>doesn't work</em>, in general! So let this be a strong reminder that you do need to divide by \(p(x)\) when doing Monte Carlo integration. (See <code>pdfAverage</code>.)</li>
+<li> Try setting the <code>weights</code> function (in the source of this document) to <code>return F(x)</code> (i.e., make the probability distribution exactly proportional to the integrand) and notice how well the Monte Carlo integral estimate does.</li>
+<li>Try to find a <code>weights</code> that has <em>worse</em> convergence than uniform.</li>
+<li>Experiment with different <code>F</code> and <code>weights</code> to get a feel for when the trapezoid rule is faster-converging and when Monte Carlo integration is faster-converging.</li>
+<li>Check out <code>Sampler</code> and figure out how it is implementing the alias method.</li>
+</ol>
 
 <div id="wrapper" class="column-container">
-<canvas id="canvas-top" width="600px" height="350px"></canvas>
+<canvas id="canvas-top" width=100 height=100 style="width:60vw; height:40vw;"></canvas>
 
 <div>
 	<div class="row-container">
@@ -91,7 +114,7 @@ button {
 	
 	<div id="lower" class="center">
 	<label>\(a:\)</label>
-	<input id="a_input" type="number" value="-5">
+	<input id="a_input" type="number" value="-2">
 	</div>
 	
 	<div id="higher" class="center">
@@ -119,7 +142,7 @@ button {
 
 </div>
 
-<canvas id="canvas-bot" width="1000px" height="350px"></canvas>
+<canvas id="canvas-bot" width=100 height=100 style="width:60vw;height:20vw;"></canvas>
 </div>
 
 <script>
@@ -127,48 +150,30 @@ button {
 //-----------------------------------------------------------------
 // Helpful global variables
 
-const TOP_CANVAS = document.getElementById('canvas-top');
-const BOT_CANVAS = document.getElementById('canvas-bot');
-
 const INTEGRAL_SAMPLES = 1000;
 const MAX_N = 1000;
 const EPS = 0.00001
 
 // graph space settings
-const MAX_X = 10;
 const MIN_X = -10;
-const MAX_Y = 10;
+const MAX_X = 10;
 const MIN_Y = -5;
-const PROB_SCALE = 10; //how much to scale probabilities when displaying on the axes
+const MAX_Y = 10;
 
 // graph styling settings
-const F_COLOR = "green";
-const WEIGHTS_COLOR = "#b1b";
-const PDF_COLOR = "red";
-const BOUNDS_COLOR = "blue";
-const LABEL_FONT = "18px Serif";
-const COLOR_YELLOW = [255, 255, 0];
-const COLOR_ORANGE = [255, 165, 0];
-const COLOR_GREEN = [0, 255, 0];
-const COLOR_BLUE = [0, 0, 255];
-
-
-// tick marks settings
+const LABEL_FONT_SIZE = 15;
+const LABEL_FONT_FAMILY = "Open Sans";
 const TICK_MARK_OFFSET = 2.5;
-const STEP_X = 1;
-const STEP_Y = 1;
 
-var TopCanvas;
-var BottomCanvas;
 
 // CHANGE THIS: default function to graph
 const F = function(x) { 
-	return 2 * Math.sin(x) + 3;
+	return 2 * Math.sin(x*x/4) + 3 + Math.pow(Math.abs(x), 1.5) * Math.exp(-x*x/25);
 }
 
 // CHANGE THIS: weights for various positions to sample from when estimating function integral over [lo, hi]
 const weights = function(x, lo, hi) {
-	return 2 * Math.sin(x) + 2.6;
+	return 1;
 }
 
 //helper to build a sampler from weightsFn() function over range [lo, hi]:
@@ -272,16 +277,6 @@ class Sampler {
 }
 
 
-// x in graph space -> x in canvas space
-function xToCanvas(x, Width) {
-  return (x - MIN_X) / (MAX_X - MIN_X) * Width;
-}
-
-// y in graph space -> y in canvas space
-function yToCanvas(y, Height) {
-  return (1 - (y - MIN_Y) / (MAX_Y - MIN_Y)) * Height;
-}
-
 //-----------------------------------------------------------------
 // Integration and sum calculations
 
@@ -327,11 +322,276 @@ function pdfAverage(f, lo, hi, samples, probs) {
 
 //-----------------------------------------------------------------
 // Rendering functions
-function init() {  
-	TopCanvas = new DistributionRenderer(TOP_CANVAS)
-	BottomCanvas = new DistributionRenderer(BOT_CANVAS)
-	update()
+
+class Graph {  
+	constructor(canvas, {minX = -10, maxX = 10, minY = -3, maxY = 10} = {}) {  
+		this.CANVAS = canvas;
+		this.CTX = canvas.getContext("2d");
+
+		this.minX = minX;
+		this.maxX = maxX;
+		this.minY = minY;
+		this.maxY = maxY;
+		this.stepX = 1;
+		this.stepY = 1;
+
+		this.xLabel = "x";
+		this.yLabel = "y";
+
+		this.graphs = [];
+
+		this.requestDraw();
+	}
+
+	requestDraw() {
+		if (this.drawRequested) return;
+		window.requestAnimationFrame( () => {
+			delete this.drawRequested;
+			this.draw();
+		} );
+		this.drawRequested = true;
+	}
+
+	draw() {
+		const CANVAS = this.CANVAS;
+		const CTX = this.CTX;
+		const pixelRatio = this.pixelRatio = window.devicePixelRatio;
+
+		const style = getComputedStyle(CANVAS);
+		const width = this.width = Math.round(parseFloat(style.width) * pixelRatio);
+		const height = this.height = Math.round(parseFloat(style.height) * pixelRatio);
+		CANVAS.width = width;
+		CANVAS.height = height;
+
+		CTX.setTransform(1,0, 0,1, 0,0);
+		CTX.clearRect(0, 0, width, height);
+
+		this.drawAxes();
+
+		for (const g of this.graphs) {
+			g.draw();
+		}
+
+		this.drawLegend();
+	}
+
+	yToCanvas(y) {
+		return (1 - (y - this.minY) / (this.maxY - this.minY)) * (this.height - 4 * this.pixelRatio) + 2 * this.pixelRatio;
+	}
+	xToCanvas(x) {
+		return (x - this.minX) / (this.maxX - this.minX) * (this.width - 4 * this.pixelRatio) + 2 * this.pixelRatio;
+	}
+
+	drawAxes() {
+		const CTX = this.CTX;
+		const width = this.width;
+		const height = this.height;
+		const pixelRatio = this.pixelRatio;
+
+		const minX = this.minX;
+		const maxX = this.maxX;
+		const minY = this.minY;
+		const maxY = this.maxY;
+		const stepX = this.stepX;
+		const stepY = this.stepY;
+
+		CTX.save();
+		CTX.lineWidth = 2 * pixelRatio;
+	
+		// x axis
+		CTX.beginPath();
+		CTX.moveTo(this.xToCanvas(minX), this.yToCanvas(0)); 
+		CTX.lineTo(this.xToCanvas(maxX), this.yToCanvas(0));
+		CTX.stroke();
+		CTX.font = `${LABEL_FONT_SIZE * pixelRatio}px ${LABEL_FONT_FAMILY}`;
+		CTX.fillStyle = "black";
+		CTX.fillText(this.xLabel, width - LABEL_FONT_SIZE * pixelRatio, this.yToCanvas(0) + LABEL_FONT_SIZE * pixelRatio);
+
+		// y axis
+		CTX.beginPath();
+		CTX.moveTo(this.xToCanvas(0), this.yToCanvas(minY));
+		CTX.lineTo(this.xToCanvas(0), this.yToCanvas(maxY));
+		CTX.stroke();
+		CTX.font = `${LABEL_FONT_SIZE * pixelRatio}px ${LABEL_FONT_FAMILY}`;
+		CTX.fillStyle = "black";
+		CTX.fillText(this.yLabel, this.xToCanvas(0) + 0.5 * LABEL_FONT_SIZE * pixelRatio, LABEL_FONT_SIZE * pixelRatio);
+
+		// Y axis tick marks
+		CTX.beginPath();
+		for (let yi = Math.ceil(minY / stepY - 1e-3) * stepY; yi <= maxY; yi += stepY) {
+			const x = this.xToCanvas(0);
+			const y = this.yToCanvas(yi);
+
+			CTX.moveTo(x - pixelRatio * TICK_MARK_OFFSET, y);
+			CTX.lineTo(x + pixelRatio * TICK_MARK_OFFSET, y);
+		}
+		CTX.stroke();  
+	
+		// X tick marks
+		CTX.beginPath();
+		for (let xi = Math.ceil(minX / stepX - 1e-3) * stepX; xi <= maxX; xi += stepX) {
+			const x = this.xToCanvas(xi);
+			const y = this.yToCanvas(0);
+			CTX.moveTo(x, y - pixelRatio * TICK_MARK_OFFSET);
+			CTX.lineTo(x, y + pixelRatio * TICK_MARK_OFFSET);
+		}
+		CTX.stroke();   
+	
+		CTX.restore();
+	}
+
+	drawLegend() {
+		const CTX = this.CTX;
+		const width = this.width;
+		const height = this.height;
+		const pixelRatio = this.pixelRatio;
+
+		const font = `${LABEL_FONT_SIZE * pixelRatio}px ${LABEL_FONT_FAMILY}`;
+
+		CTX.font = font;
+
+		const M = 5 * pixelRatio;
+		const GAP = 20 * pixelRatio;
+
+		let w = 0;
+		let fmin = 0;
+		let fmax = LABEL_FONT_SIZE * pixelRatio;
+		for (const g of this.graphs) {
+			if (!('label' in g)) continue;
+			w += 20 * pixelRatio;
+			w += M;
+			const measure = CTX.measureText(g.label);
+			w += measure.width;
+			fmin = Math.min(fmin,-measure.actualBoundingBoxDescent);
+			fmax = Math.max(fmax, measure.actualBoundingBoxAscent);
+			w += M;
+			w += GAP;
+		}
+
+		let h = (fmax - fmin) + 2 * M;
+
+		let x = (width - w) / 2;
+		let y = height - 5 * pixelRatio - h;
+		if (this.legendTop) {
+			y = 5 * pixelRatio;
+		}
+
+		CTX.fillStyle = '#fff';
+		CTX.fillRect(x,y,w,h);
+		CTX.lineWidth = 1 * pixelRatio;
+		CTX.strokeStyle = '#000';
+		CTX.strokeRect(x,y,w,h);
+
+		x += 0.5 * M + 0.5 * GAP;
+		for (const g of this.graphs) {
+			if (!('label' in g)) continue;
+			CTX.beginPath();
+			CTX.moveTo(x,y + 0.5 * h);
+			x += 20 * pixelRatio;
+			CTX.lineTo(x,y + 0.5 * h);
+			CTX.lineWidth = 2 * pixelRatio;
+			CTX.strokeStyle = g.style;
+			CTX.stroke();
+			x += M;
+
+			CTX.fillStyle = '#000';
+			CTX.fillText(g.label, x, y + M + fmax);
+			x += CTX.measureText(g.label).width;
+			x += M;
+			x += GAP;
+		}
+	}
+
+	addSamples(samples, style) {
+		samples = samples.slice();
+		this.graphs.push({
+		draw:()=>{
+			const CTX = this.CTX;
+			const pixelRatio = this.pixelRatio;
+
+			const y0 = this.yToCanvas(this.minY);
+			const y1 = this.yToCanvas(this.maxY);
+			CTX.beginPath();
+			for (let s of samples) {
+				const x = this.xToCanvas(s);
+				CTX.moveTo(x, y0);
+				CTX.lineTo(x, y1);
+			}
+			CTX.lineWidth = 1 * pixelRatio;
+			CTX.strokeStyle = style;
+			CTX.stroke();
+		}
+		});
+	}
+
+	addVertical(label, pos, style) {
+		this.graphs.push({
+		draw:()=>{
+			const CTX = this.CTX;
+			const pixelRatio = this.pixelRatio;
+
+			const x = this.xToCanvas(pos);
+
+			const y0 = this.yToCanvas(this.minY);
+			const y1 = this.yToCanvas(this.maxY);
+
+			CTX.beginPath();
+			CTX.moveTo(x, y0);
+			CTX.lineTo(x, y1);
+			CTX.lineWidth = 1 * pixelRatio;
+			CTX.strokeStyle = style;
+			CTX.stroke();
+			CTX.font = `${LABEL_FONT_SIZE * pixelRatio}px ${LABEL_FONT_FAMILY}`;
+			CTX.fillStyle = style;
+			CTX.fillText(label, x + 10, 15 * pixelRatio);
+		}
+		});
+	}
+
+	addFunction(label, f, style, POINTS = 400) {
+		let xs = [];
+		let ys = [];
+		for (let i = 0; i <= POINTS; ++i) {
+			let x = i / POINTS * (this.maxX - this.minX) + this.minX;
+			xs.push(x);
+			ys.push(f(x));
+		}
+		this.addLine(label, xs, ys, style);
+	}
+
+	addLine(label, xs, ys, style, width=2) {
+		const graph = {
+		draw:()=>{
+			const CTX = this.CTX;
+			const pixelRatio = this.pixelRatio;
+			CTX.beginPath();
+			CTX.moveTo(this.xToCanvas(xs[0]), this.yToCanvas(ys[0]));
+			for (let i = 1; i < xs.length; ++i) {
+				CTX.lineTo(this.xToCanvas(xs[i]), this.yToCanvas(ys[i]));
+			}
+			CTX.lineWidth = width * pixelRatio;
+			CTX.strokeStyle = style;
+			CTX.stroke();
+		}
+		};
+		if (typeof label !== 'undefined') {
+			graph.label = label;
+			graph.style = style;
+		}
+		this.graphs.push(graph);
+	}
+
 }
+
+const TOP_GRAPH = new Graph(document.getElementById('canvas-top'), {minX:MIN_X, maxX:MAX_X, minY:MIN_Y, maxY:MAX_Y});
+const BOT_GRAPH = new Graph(document.getElementById('canvas-bot'), {minX:0, maxX:1000, minY:0, maxY:10});
+BOT_GRAPH.xLabel = "n";
+BOT_GRAPH.yLabel = "error";
+
+window.addEventListener('resize', () => {
+	TOP_GRAPH.requestDraw();
+	BOT_GRAPH.requestDraw();
+});
 
 
 function update() {
@@ -355,20 +615,9 @@ function update() {
 		errorElem.innerHTML = "Invalid n value!";
 		return;
 	}
-	
-	let sampler = new Sampler(weights, lo, hi, COLOR_GREEN);
 
-	displayMath(n, lo, hi, sampler);
-	TopCanvas.draw(lo, hi, [sampler]);
-
-	const weights_1 = function(x, lo ,hi) { return 2 * Math.cos(x) + 2.6 }
-	const weights_2 = function(x, lo, hi) { return x }
-	const sampler_1 = new Sampler(weights_1, lo, hi, COLOR_YELLOW);
-	const sampler_2 = new Sampler(weights_2, lo, hi, COLOR_BLUE);
-	BottomCanvas.draw(lo, hi, [sampler, sampler_1, sampler_2]);
-}
-
-function displayMath(n, lo, hi, sampler) {
+	//actually create a sampler and draw some samples:
+	let sampler = new Sampler(weights, lo, hi, "#88f");
 	//sample locations:
 	let samples = [];
 	let probs = [];
@@ -377,8 +626,6 @@ function displayMath(n, lo, hi, sampler) {
 		samples.push(s);
 		probs.push(sampler.pdf(s));
 	}
-	//also, save for later display:
-	sampler.INFO = {samples: samples, probs:probs};
 
 	//compute values:
 	let str = "$$\\begin{aligned}";
@@ -387,250 +634,89 @@ function displayMath(n, lo, hi, sampler) {
 	str += ("\\frac{1}{n}\\sum\\limits_{i=1}^n \\frac{f(s)}{pdf(s)} &=" + `${pdfAverage(F, lo, hi, samples, probs)}`);
 	str += "\\end{aligned}$$";
 
+	//Top graph shows function, samples, sample distribution:
+	TOP_GRAPH.graphs = [];
+
+	TOP_GRAPH.addSamples(samples, "#ee0");
+	TOP_GRAPH.addVertical("a", lo, "#88f");
+	TOP_GRAPH.addVertical("b", hi, "#88f");
+
+	TOP_GRAPH.addFunction("f", F, "#b00");
+
+	TOP_GRAPH.addFunction("p*10", (x) => 10 * sampler.pdf(x), "#b80");
+
+	TOP_GRAPH.requestDraw();
+
+	//Bottom graph shows convergance of estimator:
+	BOT_GRAPH.graphs = [];
+
+	let value = numerical(F, 2000, lo, hi);
+	let ns = [];
+	const STEPS = 50;
+	const MAX_SAMPLES = 1000;
+	//report % error:
+	function err(v) {
+		return Math.abs(v-value) / value * 100;
+		//alternative idea: log error: return Math.log(Math.abs(v-value) + 1);
+	}
+	for (let i = 0; i <= STEPS; ++i) {
+		const en = Math.floor(Math.exp(Math.log(MAX_SAMPLES) * (i / STEPS)));
+		ns.push(en);
+	}
+
+
+	let range = 1;
+
+	//do a few monte carlo estimates:
+	for (let line = 0; line < 10; ++line) {
+		let samples = [];
+		let probs = [];
+		for (let i = 0; i < MAX_SAMPLES; ++i) {
+			let s = sampler.sample();
+			samples.push(s);
+			probs.push(sampler.pdf(s));
+		}
+		
+		let mc = [];
+		for (let n of ns) {
+			const v = err( pdfAverage(F, lo, hi, samples.slice(0,n), probs.slice(0,n)) );
+
+			range = Math.max(range, Math.abs(v));
+			mc.push(v);
+		}
+		BOT_GRAPH.addLine((line == 0 ? "monte carlo error" : undefined), ns, mc, "#b808", 1);
+	}
+
+	//do numerical estimates:
+	let ne = [];
+	for (let n of ns) {
+		const v = err( numerical(F, n, lo, hi) );
+		range = Math.max(range, Math.abs(v));
+		ne.push(v);
+	}
+	BOT_GRAPH.addLine("numerical error", ns, ne, "#b00");
+
+	BOT_GRAPH.minX = -0.5;
+	BOT_GRAPH.maxX = MAX_SAMPLES + 0.5;
+	BOT_GRAPH.stepX = MAX_SAMPLES / 10;
+	BOT_GRAPH.minY = -0.5;
+	BOT_GRAPH.maxY = 5 + 0.5;
+	BOT_GRAPH.stepY = 1;
+	BOT_GRAPH.legendTop = true;
+	BOT_GRAPH.yLabel = "rel error (%)";
+
+	BOT_GRAPH.requestDraw();
+
+	//reset typesetting:
 	let mathElem = document.getElementById("math");
 	mathElem.innerHTML = str;
 	MathJax.typesetClear([mathElem]);
 	MathJax.typeset([mathElem]);
+
 }
 
 
-class DistributionRenderer {  
-	constructor(HTMLCanvas) {  
-		this.CANVAS = HTMLCanvas;
-		this.CTX = HTMLCanvas.getContext("2d");
-		this.Width = HTMLCanvas.width;
-		this.Height = HTMLCanvas.height;
-		// step size for graphing functions
-		this.DX = (MAX_X - MIN_X) / this.Width;
-		this.DY = (MAX_Y - MIN_Y) / this.Height;
-	}
-
-	draw(a, b, samplers) {  
-		this.CTX.clearRect(0, 0, this.Width, this.Height);
-		drawAxes(this.CTX, this.Width, this.Height);
-		drawFunction(this.CTX, F, F_COLOR, this.Width, this.Height, this.DX, this.DY);
-		drawFunction(this.CTX, weights, WEIGHTS_COLOR, this.Width, this.Height, this.DX, this.DY);
-		
-		for (let i = 0; i < samplers.length; i ++) {  
-			drawSampler(this.CTX, samplers[i], this.Width, this.Height);
-			drawFunction(this.CTX, (x) => PROB_SCALE * samplers[i].pdf(x), PDF_COLOR, this.Width, this.Height, this.DX, this.DY);
-		}
-		
-		drawBounds(this.CTX, a, b, this.Width, this.Height);
-		drawLegend(this.CTX, this.Width, this.Height);
-	}
-}
-
-function draw(a, b, sampler) {
-	CTX.clearRect(0, 0, Width, Height);
-
-	drawAxes();
-	drawFunction(F, F_COLOR);
-	drawFunction(weights, WEIGHTS_COLOR);
-	drawSampler(sampler, "yellow");
-	drawFunction((x) => PROB_SCALE * sampler.pdf(x), PDF_COLOR);
-
-	drawBounds(a, b);
-	drawLegend();
-}
-
-// draws the X ad Y axes with tick marks
-function drawAxes(CTX, Width, Height) {
-	console.log("Input: ", CTX, Width, Height)
-	CTX.save();
-	CTX.lineWidth = 2;
-	
-	// x axis
-	CTX.beginPath();
-	CTX.moveTo(0, yToCanvas(0, Height)); 
-	CTX.lineTo(Width, yToCanvas(0, Height));
-	CTX.stroke();
-	CTX.font = LABEL_FONT;
-	CTX.fillStyle = "black";
-	CTX.fillText("x", Width - 10, 0.72 * Height);
-
-	// y axis
-	CTX.beginPath();
-	CTX.moveTo(xToCanvas(0, Width), 0);
-	CTX.lineTo(xToCanvas(0, Width), Height);
-	CTX.stroke();
-	CTX.font = LABEL_FONT;
-	CTX.fillStyle = "black";
-	CTX.fillText("y", 0.5 * Width + 10, 15);
-
-	// Y axis tick marks
-	for (let yi = MIN_Y; yi <= MAX_Y; yi += STEP_Y) {
-		CTX.beginPath();
-		CTX.moveTo(xToCanvas(0, Width) - TICK_MARK_OFFSET, yToCanvas(yi, Height));
-		CTX.lineTo(xToCanvas(0, Width) + TICK_MARK_OFFSET, yToCanvas(yi, Height));
-		CTX.stroke();  
-	}
-	
-	// X tick marks
-	for (let xi = MIN_X; xi <= MAX_X; xi += STEP_X) {
-		CTX.beginPath();
-		CTX.moveTo(xToCanvas(xi, Width), yToCanvas(0, Height) - TICK_MARK_OFFSET);
-		CTX.lineTo(xToCanvas(xi, Width), yToCanvas(0, Height) + TICK_MARK_OFFSET);
-		CTX.stroke();   
-	}
-	
-	CTX.restore();
-}
-
-function drawSampler(CTX, sampler, Width, Height) {
-	CTX.save();
-
-	/* //skipping -- already have sampler.pdf() drawn
-	//draw the reported (via 'probs') distribution of the sampler:
-	CTX.beginPath();
-	CTX.moveTo( xToCanvas(sampler.lo) , yToCanvas(0.0) );
-	for (let i = 0; i < sampler.BINS; ++i) {
-		let x0 = xToCanvas( (sampler.hi - sampler.lo) * i / sampler.BINS + sampler.lo );
-		let x1 = xToCanvas( (sampler.hi - sampler.lo) * (i+1) / sampler.BINS + sampler.lo );
-
-		let y = yToCanvas( sampler.probs[i] * PROB_SCALE );
-
-		CTX.lineTo(x0, y);
-		CTX.lineTo(x1, y);
-	}
-	CTX.lineTo( xToCanvas(sampler.hi) , yToCanvas(0.0) );
-	CTX.strokeStyle = '#888';
-	CTX.stroke();
-	CTX.closePath();
-
-	CTX.fillStyle = '#8881';
-	CTX.fill();
-	*/
-
-	//draw an empirical (via a bunch of samples) distribution for the sampler:
-	let counts = [];
-	for (let i = 0; i < 10; ++i) {
-		counts.push(0);
-	}
-
-	const SAMPLES = 10000;
-	let outside = 0;
-	for (let i = 0; i < SAMPLES; ++i) {
-		const b = Math.floor( (sampler.sample(i) - sampler.lo) / (sampler.hi - sampler.lo) * counts.length );
-		if (b >= 0 && b < counts.length) {
-			counts[b] += 1;
-		}
-	}
-
-	CTX.beginPath();
-	CTX.moveTo( xToCanvas(sampler.lo, Width) , yToCanvas(0.0, Height) );
-	for (let i = 0; i < sampler.BINS; ++i) {
-		let x0 = xToCanvas( (sampler.hi - sampler.lo) * i / counts.length + sampler.lo, Width );
-		let x1 = xToCanvas( (sampler.hi - sampler.lo) * (i+1) / counts.length + sampler.lo, Width );
-
-		let dx = (sampler.hi - sampler.lo) / counts.length;
-
-		let y = yToCanvas( counts[i] / SAMPLES / dx * PROB_SCALE , Height);
-
-		CTX.lineTo(x0, y);
-		CTX.lineTo(x1, y);
-	}
-	CTX.lineTo( xToCanvas(sampler.hi, Width) , yToCanvas(0.0, Height) );
-	CTX.strokeStyle = '#880';
-	CTX.stroke();
-	CTX.closePath();
-	console.log(sampler.fillRGB)
-	var [r, g, b] = sampler.fillRGB // color of area under the curve
-	CTX.fillStyle = `rgba(${r}, ${g}, ${b}, 0.5)`;
-	CTX.fill();
-
-	//draw any samples stored in an INFO object:
-	if ('INFO' in sampler) {
-		CTX.beginPath();
-		for (let s of sampler.INFO.samples) {
-			let x = xToCanvas(s, Width);
-			let y0 = yToCanvas(MIN_Y, Height);
-			let y1 = yToCanvas(MAX_Y, Height);
-			CTX.moveTo(x, y0);
-			CTX.lineTo(x, y1);
-		}
-		CTX.strokeStyle = '#8808';
-		CTX.stroke();
-	}
-
-	CTX.restore();
-}
-
-function drawFunction(CTX, f, style, Width, Height, DX, DY) {
-	CTX.save();
-
-	CTX.beginPath();
-	CTX.strokeStyle = style;
-	CTX.moveTo(xToCanvas(MIN_X, Width), yToCanvas(f(MIN_X), Height));
-	for (let x = MIN_X + DX; x <= MAX_X; x += DX) {
-		CTX.lineTo(xToCanvas(x, Width), yToCanvas(f(x), Height));
-	}
-	CTX.stroke();
-
-	CTX.restore();
-}
-
-function drawBounds(CTX, lo, hi, Width, Height) {
-	CTX.save();
-
-	CTX.strokeStyle = BOUNDS_COLOR;
-	CTX.fillStyle = BOUNDS_COLOR;
-	CTX.font = LABEL_FONT;
-
-	CTX.beginPath();
-	CTX.moveTo(xToCanvas(lo, Width), 0);
-	CTX.lineTo(xToCanvas(lo, Width), Height);
-	CTX.stroke();
-	CTX.fillText(`a = ${lo}`, xToCanvas(lo, Width) + 5, 15);
-
-	CTX.beginPath();
-	CTX.moveTo(xToCanvas(hi, Width), 0);
-	CTX.lineTo(xToCanvas(hi, Width), Height);
-	CTX.stroke();
-	CTX.fillText(`b = ${hi}`, xToCanvas(hi, Width) + 5, 15);
-
-	CTX.restore();
-}
-
-// TODO: change this very bad hard-coding
-function drawLegend(CTX, Width, Height) {
-	let w = 0.3 * Width;
-	let h = 0.1 * Height;
-	let cx = 0.5 * (Width - w);
-	let cy = Height - h;
-
-	CTX.save();
-
-	CTX.beginPath();
-	CTX.rect(cx, cy, w, h);
-	CTX.fillStyle = "white";
-	CTX.fill()
-	CTX.stroke();
-
-	CTX.beginPath();
-	CTX.strokeStyle = F_COLOR;
-	CTX.moveTo(cx + 0.5 * w - 60 , cy + 0.5 * h);
-	CTX.lineTo(cx + 0.5 * w - 40, cy + 0.5 * h);
-	CTX.stroke();
-	CTX.font = LABEL_FONT;
-	CTX.fillStyle = "black";
-	CTX.fillText("f", cx + 0.5 * w - 30, cy + 0.7 * h);
-
-	CTX.beginPath();
-	CTX.strokeStyle = PDF_COLOR;
-	CTX.moveTo(cx + 0.5 * w + 10, cy + 0.5 * h);
-	CTX.lineTo(cx + 0.5 * w + 30, cy + 0.5 * h);
-	CTX.stroke();
-	CTX.font = LABEL_FONT;
-	CTX.fillStyle = "black";
-	CTX.fillText("pdf", cx + 0.5 * w + 40, cy + 0.7 * h);
-
-	CTX.restore();
-}
-
-
-window.onload = init;
-
+window.onload = update;
 
 </script>
 </body>
